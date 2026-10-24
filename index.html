@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Demo Giải Mã Tranh Pixel 20x20 - Bài 21: Moment Lực</title>
+  <style>
+    :root {
+      --primary: #4f46e5;
+      --success: #10b981;
+      --danger: #ef4444;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    body { background-color: var(--bg); color: #334155; padding: 20px; }
+
+    .header { text-align: center; margin-bottom: 24px; }
+    .header h1 { color: #1e293b; font-size: 24px; margin-bottom: 8px; }
+    .header p { color: #64748b; font-size: 14px; }
+
+    .container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 24px;
+      max-width: 1000px;
+      margin: 0 auto;
+      justify-content: center;
+    }
+
+    /* Khung tranh Canvas */
+    .canvas-card {
+      background: var(--card-bg);
+      padding: 20px;
+      border-radius: 16px;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    canvas {
+      border: 2px solid #cbd5e1;
+      border-radius: 8px;
+      background-color: #ffffff;
+      image-rendering: pixelated;
+    }
+
+    .progress-box {
+      width: 100%;
+      margin-top: 16px;
+    }
+    .progress-bar {
+      height: 10px;
+      background: #e2e8f0;
+      border-radius: 5px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--success);
+      transition: width 0.3s ease;
+    }
+    .progress-text {
+      font-size: 13px;
+      color: #64748b;
+      margin-top: 6px;
+      text-align: right;
+    }
+
+    /* Bảng câu hỏi */
+    .quiz-card {
+      flex: 1;
+      min-width: 320px;
+      max-width: 500px;
+      background: var(--card-bg);
+      padding: 20px;
+      border-radius: 16px;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+      max-height: 520px;
+      overflow-y: auto;
+    }
+
+    .question-item {
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .question-title {
+      font-weight: 600;
+      font-size: 15px;
+      margin-bottom: 12px;
+      color: #0f172a;
+    }
+    .options-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .btn-opt {
+      padding: 10px;
+      border: 1px solid #cbd5e1;
+      background: #fff;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.2s;
+      text-align: left;
+    }
+    .btn-opt:hover { background: #f1f5f9; border-color: var(--primary); }
+    .btn-opt.correct { background: #dcfce7; border-color: var(--success); color: #166534; font-weight: bold; }
+    .btn-opt.wrong { background: #fee2e2; border-color: var(--danger); color: #991b1b; }
+    .btn-opt:disabled { cursor: not-allowed; opacity: 0.8; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>🎨 Thách Thức Giải Mã Tranh Pixel (20x20)</h1>
+    <p>Trả lời đúng câu hỏi trắc nghiệm để hiện nguyên hình bức tranh bị ẩn!</p>
+  </div>
+
+  <div class="container">
+    <!-- Cột trái: Khung Canvas + Tiến độ -->
+    <div class="canvas-card">
+      <canvas id="pixelCanvas" width="400" height="400"></canvas>
+      <div class="progress-box">
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+        <div class="progress-text" id="progressText">Đã mở: 0%</div>
+      </div>
+    </div>
+
+    <!-- Cột phải: Danh sách câu hỏi -->
+    <div class="quiz-card" id="quizContainer">
+      <!-- Câu hỏi sẽ được sinh tự động từ JS -->
+    </div>
+  </div>
+
+  <script>
+    // 1. Cấu hình Kích thước Lưới Pixel (20x20)
+    const GRID_SIZE = 20;
+    const CANVAS_SIZE = 400;
+    const CELL_SIZE = CANVAS_SIZE / GRID_SIZE;
+
+    // Bảng màu hỗ trợ
+    const PALETTE = {
+      0: '#FFFFFF', // Trắng (Chưa mở)
+      1: '#E63946', // Đỏ bông hoa
+      2: '#2A9D8F', // Xanh lá cành lá
+      3: '#FFB703', // Vàng đài hoa
+      4: '#1D3557'  // Xanh đen
+    };
+
+    // Ma trận Pixel 20x20 ẩn (Hình bông hoa đơn giản)
+    const PIXEL_ART = [
+      [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+      [0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0],
+      [0,0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0],
+      [0,0,0,0,1,1,1,3,3,1,1,1,1,1,0,0,0,0,0,0],
+      [0,0,0,1,1,1,3,3,3,3,1,1,1,1,1,0,0,0,0,0],
+      [0,0,0,1,1,1,1,3,3,1,1,1,1,1,1,0,0,0,0,0],
+      [0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0],
+      [0,0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0],
+      [0,0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0],
+      [0,0,0,0,0,0,0,2,2,0,0,0,0,0,0,0,0,0,0,0],
+      [0,0,0,0,0,0,0,2,2,0,0,0,0,0,0,0,0,0,0,0],
+      [0,0,0,0,2,2,0,2,2,0,0,0,0,0,0,0,0,0,0,0],
+      [0,0,0,2,2,2,2,2,2,0,0,0,0,0,0,0,0,0,0,0],
+      [0,0,0,0,2,2,2,2,2,2,2,2,0,0,0,0,0,0,0,0],
+      [0,0,0,0,0,0,0,2,2,2,2,2,2,0,0,0,0,0,0,0],
+      [0,0,0,0,0,0,0,2,2,0,2,2,0,0,0,0,0,0,0,0],
+      [0,0,0,0,0,0,0,2,2,0,0,0,0,0,0,0,0,0,0,0],
+      [0,0,0,0,0,0,0,2,2,0,0,0,0,0,0,0,0,0,0,0],
+      [0,0,0,0,0,0,0,2,2,0,0,0,0,0,0,0,0,0,0,0],
+      [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    ];
+
+    // 2. Bộ câu hỏi trắc nghiệm (Mỗi câu trả lời đúng sẽ giải mã một phần ô lưới)
+    const QUESTIONS = [
+      {
+        id: 1,
+        title: "Câu 1: Đơn vị đo của Moment lực trong hệ SI là gì?",
+        options: ["A. N/m", "B. N.m", "C. Kg.m", "D. Joules"],
+        correct: 1,
+        // Các ô tọa độ [hàng, cột] sẽ được mở khi trả lời đúng câu này
+        targetPixels: [[1,7],[1,8],[1,9],[1,10],[2,5],[2,6],[2,7],[2,8],[2,9],[2,10],[2,11],[2,12]]
+      },
+      {
+        id: 2,
+        title: "Câu 2: Công thức tính Moment lực đối với một trục quay là?",
+        options: ["A. M = F / d", "B. M = F + d", "C. M = F . d", "D. M = F . d²"],
+        correct: 2,
+        targetPixels: [[3,4],[3,5],[3,6],[3,7],[3,8],[3,9],[3,10],[3,11],[3,12],[3,13],[4,3],[4,4],[4,5],[4,6],[4,7],[4,8],[4,9],[4,10],[4,11],[4,12],[4,13],[4,14]]
+      },
+      {
+        id: 3,
+        title: "Câu 3: Cánh tay đòn d của lực là khoảng cách từ trục quay đến?",
+        options: ["A. Điểm đặt của lực", "B. Giá của lực", "C. Trọng tâm vật", "D. Đầu vật"],
+        correct: 1,
+        targetPixels: [[5,3],[5,4],[5,5],[5,6],[5,7],[5,8],[5,9],[5,10],[5,11],[5,12],[5,13],[5,14],[6,3],[6,4],[6,5],[6,6],[6,7],[6,8],[6,9],[6,10],[6,11],[6,12],[6,13],[6,14],[7,4],[7,5],[7,6],[7,7],[7,8],[7,9],[7,10],[7,11],[7,12],[7,13],[8,5],[8,6],[8,7],[8,8],[8,9],[8,10],[8,11],[8,12]]
+      },
+      {
+        id: 4,
+        title: "Câu 4: Muốn làm cờ lê quay dễ dàng hơn ta nên chọn loại cờ lê có?",
+        options: ["A. Cán ngắn", "B. Cán dài", "C. Tiết diện nhỏ", "D. Khối lượng lớn"],
+        correct: 1,
+        targetPixels: [[9,7],[9,8],[10,7],[10,8],[11,4],[11,5],[11,7],[11,8],[12,3],[12,4],[12,5],[12,6],[12,7],[12,8],[13,4],[13,5],[13,6],[13,7],[13,8],[13,9],[13,10],[13,11],[14,7],[14,8],[14,9],[14,10],[14,11],[14,12],[15,7],[15,8],[15,10],[15,11],[16,7],[16,8],[17,7],[17,8],[18,7],[18,8]]
+      }
+    ];
+
+    // Trạng thái mở các câu hỏi
+    const solvedQuestions = new Set();
+
+    // Khởi tạo Canvas
+    const canvas = document.getElementById('pixelCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // Drawing Engine: Vẽ lại lưới Canvas dựa trên trạng thái đã mở
+    function renderCanvas() {
+      ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+
+      // Tạo danh sách tất cả các ô đã được unlocked
+      const unlockedMap = Array(GRID_SIZE).fill().map(() => Array(GRID_SIZE).fill(false));
+      solvedQuestions.forEach(qIdx => {
+        QUESTIONS[qIdx].targetPixels.forEach(([r, c]) => {
+          unlockedMap[r][c] = true;
+        });
+      });
+
+      // Lặp qua từng ô để tô màu
+      for (let r = 0; r < GRID_SIZE; r++) {
+        for (let c = 0; c < GRID_SIZE; c++) {
+          const x = c * CELL_SIZE;
+          const y = r * CELL_SIZE;
+
+          if (unlockedMap[r][c]) {
+            // Nếu đã trả lời đúng -> Tô màu Pixel thực
+            const colorCode = PIXEL_ART[r][c];
+            ctx.fillStyle = PALETTE[colorCode] || '#FFFFFF';
+            ctx.fillRect(x, y, CELL_SIZE, CELL_SIZE);
+          } else {
+            // Nếu chưa trả lời -> Vẽ ô ẩn màu xám nhạt
+            ctx.fillStyle = '#F8FAFC';
+            ctx.fillRect(x, y, CELL_SIZE, CELL_SIZE);
+          }
+
+          // Vẽ đường viền ô lưới
+          ctx.strokeStyle = '#E2E8F0';
+          ctx.lineWidth = 0.5;
+          ctx.strokeRect(x, y, CELL_SIZE, CELL_SIZE);
+        }
+      }
+
+      // Cập nhật thanh tiến độ
+      const progressPercent = Math.round((solvedQuestions.size / QUESTIONS.length) * 100);
+      document.getElementById('progressFill').style.width = progressPercent + '%';
+      document.getElementById('progressText').innerText = `Đã mở: ${progressPercent}%`;
+    }
+
+    // Khởi tạo Giao diện danh sách câu hỏi
+    function renderQuiz() {
+      const container = document.getElementById('quizContainer');
+      container.innerHTML = '';
+
+      QUESTIONS.forEach((q, qIdx) => {
+        const qEl = document.createElement('div');
+        qEl.className = 'question-item';
+
+        let optionsHTML = '';
+        q.options.forEach((opt, optIdx) => {
+          optionsHTML += `
+            <button class="btn-opt" onclick="checkAnswer(${qIdx}, ${optIdx}, this)">
+              ${opt}
+            </button>
+          `;
+        });
+
+        qEl.innerHTML = `
+          <div class="question-title">${q.title}</div>
+          <div class="options-grid">${optionsHTML}</div>
+        `;
+        container.appendChild(qEl);
+      });
+    }
+
+    // Xử lý khi người dùng chọn đáp án
+    function checkAnswer(qIdx, selectedOptIdx, btn) {
+      const question = QUESTIONS[qIdx];
+      const parent = btn.parentElement;
+      const buttons = parent.querySelectorAll('.btn-opt');
+
+      // Vô hiệu hóa chọn lại câu này sau khi trả lời
+      buttons.forEach(b => b.disabled = true);
+
+      if (selectedOptIdx === question.correct) {
+        btn.classList.add('correct');
+        solvedQuestions.add(qIdx);
+        renderCanvas(); // Cập nhật màu trên Canvas
+      } else {
+        btn.classList.add('wrong');
+        // Hiển thị đáp án đúng
+        buttons[question.correct].classList.add('correct');
+      }
+    }
+
+    // Chạy khởi tạo ứng dụng
+    renderQuiz();
+    renderCanvas();
+  </script>
+</body>
+</html>
